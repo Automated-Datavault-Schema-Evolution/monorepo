@@ -1,0 +1,86 @@
+env_file:
+  - .env
+services:
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    container_name: zookeeper
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=${ALLOW_PLAINTEXT_LISTENER}
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: bitnami/kafka:latest
+    container_name: kafka
+    environment:
+      - KAFKA_BROKER_ID=${KAFKA_BROKER_ID}
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=${ALLOW_PLAINTEXT_LISTENER}
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  filewatcher:
+    build: ./services/filewatcher
+    container_name: filewatcher
+    env_file:
+      - .env
+    volumes:
+      - ${DATA_DIR}:/data
+    depends_on:
+      - kafka
+
+  # consumer:
+  #   build: ./services/streaming_consumer
+  #   container_name: streaming_consumer
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - ${DATA_DIR}:/data
+  #   depends_on:
+  #     - kafka
+  #     - filewatcher
+
+  datalake_handler:
+    build: ./services/datalake_handler
+    container_name: datalake_handler
+    env_file:
+      - .env
+    volumes:
+      - ${DATA_DIR}:/data
+    depends_on:
+      - postgres
+
+  data_vault:
+    build: ./services/data_vault
+    container_name: data_vault
+    env_file:
+      - .env
+    volumes:
+      - ${DATA_DIR}:/data
+    depends_on:
+      - datalake_handler
+      - postgres
+
+  etl_framework:
+    build: ./services/evolution_framework
+    container_name: evolution_framework
+    env_file:
+      - .env
+    depends_on:
+      - filewatcher
+      - datalake_handler
+      - data_vault
+volumes:
+  pgdata:

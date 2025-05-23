@@ -1,0 +1,16 @@
+[submodule "services/datalake_handler"]
+	path = services/datalake_handler
+	url = https://github.com/Automated-Datavault-Schema-Evolution/DataLake.git
+	branch = dev.0.0.2
+[submodule "utils/logger"]
+	path = utils/logger
+	url = https://github.com/Automated-Datavault-Schema-Evolution/MyLogger.git
+	branch = v0.2.1
+[submodule "utils/data_generator"]
+	path = utils/data_generator
+	url = https://github.com/Automated-Datavault-Schema-Evolution/DataGenerator
+	branch = dev
+[submodule "services/filewatcher"]
+	path = services/filewatcher
+	url = https://github.com/Automated-Datavault-Schema-Evolution/FileWatcher.git
+	branch = dev-0.0.1
