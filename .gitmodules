@@ -14,3 +14,11 @@
 	path = services/filewatcher
 	url = https://github.com/Automated-Datavault-Schema-Evolution/FileWatcher.git
 	branch = dev-0.0.1
+[submodule "services/data_vault"]
+	path = services/data_vault
+	url = https://github.com/Automated-Datavault-Schema-Evolution/DataVault
+	branch = dev.0.0.1
+[submodule "services/evolution_framework"]
+	path = services/evolution_framework
+	url = https://github.com/Automated-Datavault-Schema-Evolution/Framework
+	branch = dev.0.0.1
