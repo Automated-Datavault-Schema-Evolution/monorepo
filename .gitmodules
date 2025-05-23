@@ -22,3 +22,6 @@
 	path = services/evolution_framework
 	url = https://github.com/Automated-Datavault-Schema-Evolution/Framework
 	branch = dev.0.0.1
+[submodule "DOCU/architecture"]
+	path = DOCU/architecture
+	url = https://github.com/Automated-Datavault-Schema-Evolution/Architecture
