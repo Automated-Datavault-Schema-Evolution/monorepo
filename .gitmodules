@@ -1,7 +1,7 @@
 [submodule "services/datalake_handler"]
 	path = services/datalake_handler
 	url = https://github.com/Automated-Datavault-Schema-Evolution/DataLake.git
-	branch = dev.0.0.2
+	branch = dev.0.0.3
 [submodule "utils/logger"]
 	path = utils/logger
 	url = https://github.com/Automated-Datavault-Schema-Evolution/MyLogger.git
