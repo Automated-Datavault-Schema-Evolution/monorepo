@@ -1,86 +1,132 @@
-env_file:
-  - .env
 services:
-  zookeeper:
-    image: bitnami/zookeeper:latest
-    container_name: zookeeper
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --api.dashboard=true
+    ports: [ "80:80" ]
+    volumes: [ "/var/run/docker.sock:/var/run/docker.sock:ro" ]
+    networks: [ data-automation-net ]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=PathPrefix(`/traefik`)
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.middlewares.strip-traefik.stripprefix.prefixes=/traefik
+      - traefik.http.routers.traefik.middlewares=strip-traefik
+
+  dockge:
+    image: louislam/dockge:1
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=${ALLOW_PLAINTEXT_LISTENER}
-    ports:
-      - "2181:2181"
+      - DOCKGE_STACKS_DIR=/opt/stacks
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./services:/opt/stacks/services          # your submodules (data_vault, datalake_handler, etc.)
+      - ./DOCKER_FILES:/opt/stacks/DOCKER_FILES  # postgres, kafka live here
+    networks: [ data-automation-net ]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.dockge.rule=PathPrefix(`/dockge`)
+      - traefik.http.services.dockge.loadbalancer.server.port=5001
+      - traefik.http.middlewares.strip-dockge.stripprefix.prefixes=/dockge
+      - traefik.http.routers.dockge.middlewares=strip-dockge
 
-  kafka:
-    image: bitnami/kafka:latest
-    container_name: kafka
+  grafana:
+    image: grafana/grafana:11.1.0
     environment:
-      - KAFKA_BROKER_ID=${KAFKA_BROKER_ID}
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - ALLOW_PLAINTEXT_LISTENER=${ALLOW_PLAINTEXT_LISTENER}
-    ports:
-      - "9092:9092"
-    depends_on:
-      - zookeeper
-
-  postgres:
-    image: postgres:latest
-    container_name: postgres
-    env_file:
-      - .env
-    ports:
-      - "5432:5432"
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SERVER_ROOT_URL=http://localhost/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana-provisioning:/etc/grafana/provisioning
+    networks: [ data-automation-net ]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.grafana.rule=PathPrefix(`/grafana`)
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+      - traefik.http.middlewares.strip-grafana.stripprefix.prefixes=/grafana
+      - traefik.http.routers.grafana.middlewares=strip-grafana
 
-  filewatcher:
-    build: ./services/filewatcher
-    container_name: filewatcher
-    env_file:
-      - .env
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    command: [ "--config.file=/etc/prometheus/prometheus.yml" ]
     volumes:
-      - ${DATA_DIR}:/data
-    depends_on:
-      - kafka
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [ data-automation-net ]
 
-  # consumer:
-  #   build: ./services/streaming_consumer
-  #   container_name: streaming_consumer
-  #   env_file:
-  #     - .env
-  #   volumes:
-  #     - ${DATA_DIR}:/data
-  #   depends_on:
-  #     - kafka
-  #     - filewatcher
-
-  datalake_handler:
-    build: ./services/datalake_handler
-    container_name: datalake_handler
-    env_file:
-      - .env
+  loki:
+    image: grafana/loki:2.9.6
+    command: [ "-config.file=/etc/loki/config.yaml" ]
     volumes:
-      - ${DATA_DIR}:/data
-    depends_on:
-      - postgres
+      - loki-data:/loki
+      - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
 
-  data_vault:
-    build: ./services/data_vault
-    container_name: data_vault
-    env_file:
-      - .env
+
+  promtail:
+    image: grafana/promtail:2.9.6
+    command: [ "-config.file=/etc/promtail/config.yml" ]
     volumes:
-      - ${DATA_DIR}:/data
-    depends_on:
-      - datalake_handler
-      - postgres
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+    networks: [ data-automation-net ]
+    depends_on: [ loki ]
 
-  etl_framework:
-    build: ./services/evolution_framework
-    container_name: evolution_framework
-    env_file:
-      - .env
-    depends_on:
-      - filewatcher
-      - datalake_handler
-      - data_vault
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    volumes: [ uptime-kuma-data:/app/data ]
+    networks: [ data-automation-net ]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kuma.rule=PathPrefix(`/status`)
+      - traefik.http.services.kuma.loadbalancer.server.port=3001
+      - traefik.http.middlewares.strip-kuma.stripprefix.prefixes=/status
+      - traefik.http.routers.kuma.middlewares=strip-kuma
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [ data-automation-net ]
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command: [ "--path.rootfs=/host" ]
+    volumes:
+      - "/:/host:ro"           # drop ,rslave
+    networks: [ data-automation-net ]
+
+  marquez-db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=marquez
+      - POSTGRES_PASSWORD=marquez
+      - POSTGRES_DB=marquez
+
+  marquez:
+    image: marquezproject/marquez:0.50.0
+    environment:
+      - MARQUEZ_DB_HOST=marquez-db
+      - MARQUEZ_DB_PORT=5432
+      - MARQUEZ_DB_USER=marquez
+      - MARQUEZ_DB_PASSWORD=marquez
+      - MARQUEZ_DB_NAME=marquez
+
+
 volumes:
-  pgdata:
+  grafana-data:
+  prometheus-data:
+  loki-data:
+  uptime-kuma-data:
+  marquez-db:
+
+networks:
+  data-automation-net:
+    external: true

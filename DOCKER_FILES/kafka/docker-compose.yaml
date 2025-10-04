@@ -6,8 +6,16 @@ services:
       - "2181:2181"
     environment:
       - ALLOW_ANONYMOUS_LOGIN=yes
+    volumes:
+      - ${HOST_ZK_DATA}:/var/lib/zookeeper/data
+      - ${HOST_ZK_LOG}:/var/lib/zookeeper/log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     networks:
-      - data_automation-net
+      - data-automation-net
 
   kafka:
     image: bitnami/kafka:latest
@@ -21,25 +29,33 @@ services:
       - KAFKA_CFG_NODE_ID=1
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
       - KAFKA_CFG_LISTENERS=PLAINTEXT_INTERNAL://0.0.0.0:9092,PLAINTEXT_EXTERNAL://0.0.0.0:19092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT_INTERNAL://kafka:9092,PLAINTEXT_EXTERNAL://localhost:19092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT_INTERNAL://kafka:9092,PLAINTEXT_EXTERNAL://host.docker.internal:19092
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT_INTERNAL
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_LOG_RETENTION_BYTES=21474836480   # 20 GiB across topics
+      - KAFKA_LOG_SEGMENT_BYTES=134217728       # 128 MiB segments
+      - KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS=60000
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    volumes:
+      - ${HOST_KAFKA_DATA}:/var/lib/kafka/data
+      - ${HOST_KAFKA_LOGS}:/var/lib/kafka/logs
     depends_on:
       - zookeeper
     networks:
-      - data_automation-net
+      - data-automation-net
 
   kafka-ui:
     image: provectuslabs/kafka-ui
     container_name: kafka-ui
     networks:
-      - data_automation-net
-    depends_on:
-      - kafka
-      - zookeeper
+      - data-automation-net
     ports:
       - "7777:8080"
     environment:
@@ -47,8 +63,14 @@ services:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
-
+      - SERVER_USE_FORWARD_HEADERS=true
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kafka.rule=PathPrefix(`/kafka`)
+      - traefik.http.services.kafka.loadbalancer.server.port=8080
+      - traefik.http.middlewares.kafka-strip.stripprefix.prefixes=/kafka
+      - traefik.http.routers.kafka.middlewares=kafka-strip
 
 networks:
-  data_automation-net:
+  data-automation-net:
     external: true
