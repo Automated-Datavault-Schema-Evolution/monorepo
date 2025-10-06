@@ -2,19 +2,24 @@ services:
   traefik:
     image: traefik:v3.1
     command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.traefik.address=:8080
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --api.dashboard=true
-    ports: [ "80:80" ]
-    volumes: [ "/var/run/docker.sock:/var/run/docker.sock:ro" ]
-    networks: [ data-automation-net ]
+      - --providers.file.filename=/etc/traefik/traefik-dynamic.yml
+      - --log.level=DEBUG
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./observability/traefik/traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.traefik.rule=PathPrefix(`/traefik`)
-      - traefik.http.routers.traefik.service=api@internal
-      - traefik.http.middlewares.strip-traefik.stripprefix.prefixes=/traefik
-      - traefik.http.routers.traefik.middlewares=strip-traefik
+      traefik.enable: "true"
+
+
 
   dockge:
     image: louislam/dockge:1
@@ -35,11 +40,16 @@ services:
   grafana:
     image: grafana/grafana:11.1.0
     environment:
+      - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_DATABASE_TYPE=postgres
+      - GF_DATABASE_HOST=postgres:5432
+      - GF_DATABASE_NAME=postgres
+      - GF_DATABASE_USER=grafana
+      - GF_DATABASE_PASSWORD=postgres
       - GF_SERVER_ROOT_URL=http://localhost/grafana
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
-      - grafana-data:/var/lib/grafana
       - ./observability/grafana-provisioning:/etc/grafana/provisioning
     networks: [ data-automation-net ]
     labels:
@@ -51,11 +61,21 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.55.0
-    command: [ "--config.file=/etc/prometheus/prometheus.yml" ]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.external-url=/prometheus
+      - --web.route-prefix=/
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks: [ data-automation-net ]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prom.rule=Path(`/prometheus`) || PathPrefix(`/prometheus/`)
+      - traefik.http.routers.prom.entrypoints=web
+      - traefik.http.services.prom.loadbalancer.server.port=9090
+      - traefik.http.middlewares.strip-prom.stripprefix.prefixes=/prometheus
+      - traefik.http.routers.prom.middlewares=strip-prom
 
   loki:
     image: grafana/loki:2.9.6
@@ -63,7 +83,7 @@ services:
     volumes:
       - loki-data:/loki
       - ./observability/loki-config.yaml:/etc/loki/config.yaml:ro
-
+    networks: [ data-automation-net ]
 
   promtail:
     image: grafana/promtail:2.9.6
@@ -77,12 +97,13 @@ services:
 
   uptime-kuma:
     image: louislam/uptime-kuma:1
-    volumes: [ uptime-kuma-data:/app/data ]
-    networks: [ data-automation-net ]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.kuma.rule=PathPrefix(`/status`)
+      # Match /status and anything under it
+      - traefik.http.routers.kuma.rule=Path(`/status`) || PathPrefix(`/status/`)
+      - traefik.http.routers.kuma.entrypoints=web
       - traefik.http.services.kuma.loadbalancer.server.port=3001
+      # Strip /status before forwarding to Kuma
       - traefik.http.middlewares.strip-kuma.stripprefix.prefixes=/status
       - traefik.http.routers.kuma.middlewares=strip-kuma
 
@@ -103,21 +124,46 @@ services:
       - "/:/host:ro"           # drop ,rslave
     networks: [ data-automation-net ]
 
-  marquez-db:
+  marquez-db-init:
     image: postgres:15
+    volumes:
+      - ./observability/marquez-db-init.sh:/init.sh:ro
     environment:
-      - POSTGRES_USER=marquez
-      - POSTGRES_PASSWORD=marquez
-      - POSTGRES_DB=marquez
+      # Optional overrides; if not set, script defaults kick in.
+      PGHOST: postgresdb
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MARQUEZ_DB: marquez
+      MARQUEZ_DB_USER: marquez
+      MARQUEZ_DB_PASSWORD: marquez
+      MARQUEZ_DB_RESET: "false"
+    entrypoint: [ "sh", "/init.sh" ]
+    networks: [ data-automation-net ]
+    restart: "no"
 
   marquez:
     image: marquezproject/marquez:0.50.0
+    command: [ "server", "/etc/marquez/config.yml" ]
     environment:
-      - MARQUEZ_DB_HOST=marquez-db
-      - MARQUEZ_DB_PORT=5432
-      - MARQUEZ_DB_USER=marquez
-      - MARQUEZ_DB_PASSWORD=marquez
-      - MARQUEZ_DB_NAME=marquez
+      MARQUEZ_CONFIG: /etc/marquez/config.yml
+      MARQUEZ_MIGRATE_ON_STARTUP: "false"
+    volumes:
+      - ./observability/marquez-config.yml:/etc/marquez/config.yml:ro
+    depends_on:
+      - marquez-db-init
+    networks: [ data-automation-net ]
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marquez.entrypoints=web
+      - traefik.http.routers.marquez.rule=PathPrefix(`/lineage`)
+      - traefik.http.services.marquez.loadbalancer.server.port=5000
+      - traefik.http.middlewares.lineage-strip.stripprefix.prefixes=/lineage
+      - traefik.http.routers.marquez.middlewares=lineage-strip
+
+
+
 
 
 volumes:

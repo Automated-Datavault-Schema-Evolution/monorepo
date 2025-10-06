@@ -1,0 +1,50 @@
+http:
+  routers:
+    # /traefik -> redirect to /traefik/dashboard/
+    tfx-dash-root:
+      entryPoints: [ "web" ]
+      rule: Path(`/traefik`)
+      middlewares: [ "tfx-dash-redirect-root" ]
+      service: noop@internal
+      priority: 20000
+
+    # /traefik/ (with trailing slash) -> redirect
+    tfx-dash-root-slash:
+      entryPoints: [ "web" ]
+      rule: Path(`/traefik/`)
+      middlewares: [ "tfx-dash-redirect-root" ]
+      service: noop@internal
+      priority: 19999
+
+    # /traefik/dashboard[...] -> rewrite to /dashboard[...]
+    tfx-dash:
+      entryPoints: [ "web" ]
+      rule: PathPrefix(`/traefik/dashboard`)
+      middlewares: [ "tfx-dash-pathfix", "dashboard_stripprefix@internal" ]
+      service: dashboard@internal
+      priority: 900
+
+    # /traefik/api[...] -> /api[...]
+    tfx-api:
+      entryPoints: [ "web" ]
+      rule: PathPrefix(`/traefik/api`)
+      middlewares: [ "tfx-api-rp" ]
+      service: api@internal
+      priority: 910
+
+  middlewares:
+    tfx-dash-redirect-root:
+      redirectRegex:
+        regex: "^/traefik/?$"
+        replacement: "/traefik/dashboard/"
+        permanent: true   # 308; set false if you prefer 302
+
+    tfx-dash-pathfix:
+      replacePathRegex:
+        regex: "^/traefik/dashboard/?(.*)$"
+        replacement: "/dashboard/$1"
+
+    tfx-api-rp:
+      replacePathRegex:
+        regex: "^/traefik/api/?(.*)$"
+        replacement: "/api/$1"

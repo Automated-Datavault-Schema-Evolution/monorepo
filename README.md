@@ -9,6 +9,52 @@ organized as a collection of submodules so each component can be developed indep
 The `DOCU/architecture` submodule contains PlantUML diagrams that document the overall
 component and data flow design for the platform.
 
+## Control plane
+
+The repository ships with a fully containerised control plane that centralises lifecycle
+management, observability and data lineage for every service. Traefik exposes a unified entry
+point (`http://localhost/<app>`) for Dockge (stack orchestration), Grafana and Prometheus
+(metrics and dashboards), Loki and Promtail (log aggregation), Uptime Kuma (synthetic
+monitoring) and Marquez (OpenLineage powered data lineage).
+
+See `DOCU/control-plane/README.md` for a detailed breakdown of the components, bootstrap
+instructions and guidance on how to manage environment variables and deploy future Kubernetes
+providers from the same UI.
+
+before starting the controle plane, you have to create the database and user in postgres for the Marquez servive:
+
+````sql
+-- create db/user if they don't exist
+DO
+$$
+BEGIN
+   IF
+NOT EXISTS (SELECT FROM pg_database WHERE datname = 'marquez') THEN
+     CREATE
+DATABASE marquez;
+END IF;
+   IF
+NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'marquez') THEN
+     CREATE
+USER marquez WITH PASSWORD 'marquez';
+END IF;
+END$$;
+
+-- (re)set password in case it was different before)
+ALTER
+USER marquez WITH PASSWORD 'marquez';
+
+-- ensure ownership/privs
+GRANT ALL PRIVILEGES ON DATABASE
+marquez TO marquez;
+\c
+marquez
+ALTER
+SCHEMA public OWNER TO marquez;
+GRANT ALL
+ON SCHEMA public TO marquez;
+````
+
 ## Modules
 
 ### `utils/data_generator`
