@@ -1,43 +1,48 @@
+# observability/traefik/traefik-dynamic.yml
 http:
   routers:
-    # /traefik -> redirect to /traefik/dashboard/
+    # existing proxied routers (keep)
     tfx-dash-root:
       entryPoints: [ "web" ]
-      rule: Path(`/traefik`)
+      rule: Path(`/traefik`) || Path(`/traefik/`)
       middlewares: [ "tfx-dash-redirect-root" ]
-      service: noop@internal
+      service: dashboard@internal
       priority: 20000
 
-    # /traefik/ (with trailing slash) -> redirect
-    tfx-dash-root-slash:
-      entryPoints: [ "web" ]
-      rule: Path(`/traefik/`)
-      middlewares: [ "tfx-dash-redirect-root" ]
-      service: noop@internal
-      priority: 19999
-
-    # /traefik/dashboard[...] -> rewrite to /dashboard[...]
     tfx-dash:
       entryPoints: [ "web" ]
       rule: PathPrefix(`/traefik/dashboard`)
-      middlewares: [ "tfx-dash-pathfix", "dashboard_stripprefix@internal" ]
+      middlewares: [ "tfx-dash-pathfix","dashboard_stripprefix@internal" ]
       service: dashboard@internal
-      priority: 900
+      priority: 15000
 
-    # /traefik/api[...] -> /api[...]
     tfx-api:
       entryPoints: [ "web" ]
       rule: PathPrefix(`/traefik/api`)
       middlewares: [ "tfx-api-rp" ]
       service: api@internal
-      priority: 910
+      priority: 10100
+
+    # NEW: handle the dashboard’s absolute requests
+    tfx-dash-abs:
+      entryPoints: [ "web" ]
+      rule: PathPrefix(`/dashboard`)
+      middlewares: [ "dashboard_stripprefix@internal" ]
+      service: dashboard@internal
+      priority: 12000
+
+    tfx-api-abs:
+      entryPoints: [ "web" ]
+      rule: PathPrefix(`/api`)
+      service: api@internal
+      priority: 12000
 
   middlewares:
     tfx-dash-redirect-root:
       redirectRegex:
         regex: "^/traefik/?$"
         replacement: "/traefik/dashboard/"
-        permanent: true   # 308; set false if you prefer 302
+        permanent: true
 
     tfx-dash-pathfix:
       replacePathRegex:

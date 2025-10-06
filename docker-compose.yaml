@@ -18,6 +18,8 @@ services:
       - ./observability/traefik/traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
     labels:
       traefik.enable: "true"
+    networks:
+      - data-automation-net
 
 
 
