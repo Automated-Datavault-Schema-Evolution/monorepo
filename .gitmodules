@@ -25,3 +25,6 @@
 [submodule "DOCU/architecture"]
 	path = DOCU/architecture
 	url = https://github.com/Automated-Datavault-Schema-Evolution/Architecture
+[submodule "DOCU/thesis"]
+    path = DOCU/thesis
+    url = https://github.com/Automated-Datavault-Schema-Evolution/Thesis
