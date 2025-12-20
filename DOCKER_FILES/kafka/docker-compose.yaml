@@ -1,6 +1,6 @@
 services:
   zookeeper:
-    image: bitnami/zookeeper:latest
+    image: zookeeper
     container_name: zookeeper
     ports:
       - "2181:2181"
@@ -18,36 +18,39 @@ services:
       - data-automation-net
 
   kafka:
-    image: bitnami/kafka:latest
+    image: apache/kafka:4.1.1   # pin; do not use :latest in infra
     container_name: kafka
     ports:
       - "9092:9092"
-      - "19092:19092"
     environment:
-      - KAFKA_BROKER_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CFG_LISTENERS=PLAINTEXT_INTERNAL://0.0.0.0:9092,PLAINTEXT_EXTERNAL://0.0.0.0:19092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT_INTERNAL://kafka:9092,PLAINTEXT_EXTERNAL://host.docker.internal:19092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT_INTERNAL
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - ALLOW_PLAINTEXT_LISTENER=yes
-      - KAFKA_LOG_RETENTION_BYTES=21474836480   # 20 GiB across topics
-      - KAFKA_LOG_SEGMENT_BYTES=134217728       # 128 MiB segments
-      - KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS=60000
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
-    volumes:
-      - ${HOST_KAFKA_DATA}:/var/lib/kafka/data
-      - ${HOST_KAFKA_LOGS}:/var/lib/kafka/logs
-    depends_on:
-      - zookeeper
+      # KRaft: keep this stable for a persisted cluster
+      CLUSTER_ID: ${CLUSTER_ID}
+
+      # KRaft combined mode (single node)
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # Listeners: internal for docker network, external for host, controller for KRaft
+      KAFKA_LISTENERS: "PLAINTEXT_INTERNAL://0.0.0.0:9092,PLAINTEXT_EXTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT_INTERNAL://kafka:9092,PLAINTEXT_EXTERNAL://${KAFKA_EXTERNAL_HOST:-localhost}:19092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT_INTERNAL"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # Single-node must use RF=1 for internal topics
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+
+      # Your retention/segment settings
+      KAFKA_LOG_RETENTION_BYTES: "21474836480"       # 20 GiB across topics
+      KAFKA_LOG_SEGMENT_BYTES: "134217728"           # 128 MiB segments
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: "60000"
+
+      # Persist data + metadata
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      KAFKA_METADATA_LOG_DIR: "/var/lib/kafka/meta"
     networks:
       - data-automation-net
 
