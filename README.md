@@ -108,10 +108,15 @@ exposing a ready-to-use `log` object to other modules INSERT LINK TO MAIN.
 
    ```
 
-3. Supply a `.env` file with the variables referenced in `docker-compose.yaml` (Kafka broker
-   ID, Spark image, host data directories, etc.).
+3. Create a random uuid for kafka:
+    ```bash 
+   docker run --rm apache/kafka:4.1.1 /opt/kafka/bin/kafka-storage.sh random-uuid
+    ```
 
-4. Launch the entire pipeline:
+4. Supply a `.env` file with the variables referenced in `docker-compose.yaml` (Kafka broker
+   ID, Kafka UUID as cluster ID, Spark image, host data directories, etc.).
+
+5. Launch the entire pipeline:
 
    ```bash
    docker compose up --build
@@ -120,3 +125,15 @@ exposing a ready-to-use `log` object to other modules INSERT LINK TO MAIN.
 The top-level `docker-compose.yaml` aggregates the service-level compose files so the whole
 workflow—from synthetic data generation to Data Vault modeling—can be started with a single
 command.
+
+compile latex:
+
+```bash
+pdflatex -synctex=1 -interaction=nonstopmode -output-directory=out MAIN
+biber -output-directory=out MAIN
+cd out
+makeglossaries MAIN
+cd ..
+pdflatex -synctex=1 -interaction=nonstopmode -output-directory=out MAIN
+pdflatex -synctex=1 -interaction=nonstopmode -output-directory=out MAIN
+```

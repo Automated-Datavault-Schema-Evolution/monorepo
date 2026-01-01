@@ -24,20 +24,24 @@ services:
 
 
   dockge:
-    image: louislam/dockge:1
+    image: louislam/dockge:latest
+    restart: unless-stopped
     environment:
-      - DOCKGE_STACKS_DIR=/opt/stacks
+      - DOCKGE_BASE_PATH=/          # or remove variable entirely
     volumes:
+      - dockge-data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./services:/opt/stacks/services          # your submodules (data_vault, datalake_handler, etc.)
-      - ./DOCKER_FILES:/opt/stacks/DOCKER_FILES  # postgres, kafka live here
-    networks: [ data-automation-net ]
+    ports:
+      - "5001:5001"                 # only if you also want direct :5001 access
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.dockge.rule=PathPrefix(`/dockge`)
-      - traefik.http.services.dockge.loadbalancer.server.port=5001
-      - traefik.http.middlewares.strip-dockge.stripprefix.prefixes=/dockge
-      - traefik.http.routers.dockge.middlewares=strip-dockge
+      traefik.enable: "true"
+      traefik.http.routers.dockge.rule: PathPrefix(`/dockge`)
+      traefik.http.routers.dockge.entrypoints: web
+      traefik.http.middlewares.strip-dockge.stripPrefix.prefixes: /dockge
+      traefik.http.routers.dockge.middlewares: strip-dockge
+      traefik.http.services.dockge.loadbalancer.server.port: "5001"
+    networks:
+      - data-automation-net
 
   grafana:
     image: grafana/grafana:11.1.0
@@ -174,6 +178,7 @@ volumes:
   loki-data:
   uptime-kuma-data:
   marquez-db:
+  dockge-data:
 
 networks:
   data-automation-net:
